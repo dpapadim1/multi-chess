@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+    <html lang="en"></html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Chess Game</title>
+        <style>
+            .selected { background-color: yellow; }
+            .cell {
+                width: 50px;
+                height: 50px;
+                border: 1px solid black;
+                text-align: center;
+                vertical-align: middle;
+                line-height: 50px;
+                font-size: 40px;
+            }
+            .board {
+                display: grid;
+                grid-template-columns: repeat(8, 50px);
+            }
+            .cell:nth-child(odd) {
+                background-color: #f0d9b5; /* light color */
+            }
+            .cell:nth-child(even) {
+                background-color: #b58863; /* dark color */
+            }
+            .cell:nth-child(odd):nth-child(even) {
+                background-color: #b58863; /* dark color */
+            }
+            .cell:nth-child(even):nth-child(odd) {
+                background-color: #f0d9b5; /* light color */
+            }
+        </style>
+    </head>
+    <body>
+        <div id="evaluationDisplay"></div>
+        <div id="board" class="board"></div>
+        <script>
+            const boardElement = document.getElementById("board");
+            let newElement = document.createElement("checkmate");
+
+            const pieces = {
+                "R": "\u2656", "N": "\u2658", "B": "\u2657", "Q": "\u2655", "K": "\u2654", "P": "\u2659", "": "",
+                "r": "\u265C", "n": "\u265E", "b": "\u265D", "q": "\u265B", "k": "\u265A", "p": "\u265F"
+            };
+            const pieces_white = [ pieces["R"], pieces["N"], pieces["B"], pieces["Q"], pieces["K"], pieces["P"] ];
+            const pieces_black = [ pieces["r"], pieces["n"], pieces["b"], pieces["q"], pieces["k"], pieces["p"] ];
+            let board = [
+                [pieces["r"], pieces["n"], pieces["b"], pieces["q"], pieces["k"], pieces["b"], pieces["n"], pieces["r"]],
+                [pieces["p"], pieces["p"], pieces["p"], pieces["p"], pieces["p"], pieces["p"], pieces["p"], pieces["p"]],
+                ["", "", "", "", "", "", "", ""],
+                ["", "", "", "", "", "", "", ""],
+                ["", "", "", "", "", "", "", ""],
+                ["", "", "", "", "", "", "", ""],
+                [pieces["P"], pieces["P"], pieces["P"], pieces["P"], pieces["P"], pieces["P"], pieces["P"], pieces["P"]],
+                [pieces["R"], pieces["N"], pieces["B"], pieces["Q"], pieces["K"], pieces["B"], pieces["N"], pieces["R"]]
+            ];
+            let white_castling = true;
+            let black_castling = true;
+
+            cells = [];
+
+            let selectedPiece = null;
+            let selectedCell = null;
+
+            function renderBoard() {
+                boardElement.innerHTML = '';
+                cells = [];
+                for (let row = 0; row < 8; row++) {
+                    for (let col = 0; col < 8; col++) {
+                        const cell = document.createElement("div");
+                        cell.classList.add("cell");
+                        cell.dataset.row = row;
+                        cell.dataset.col = col;
+                        cell.innerHTML = board[row][col];
+
+                        // Apply different colors for chessboard pattern
+                        if ((row + col) % 2 === 0) {
+                            cell.style.backgroundColor = '#f0d9b5'; // light color
+                        } else {
+                            cell.style.backgroundColor = '#b58863'; // dark color
+                        }
+
+                        cells.push(cell);
+                        boardElement.appendChild(cell);
+                    }
+                } addCellEventListeners();
+            }
+
+            function addCellEventListeners() {
+                for (let cell of cells) {
+                    cell.addEventListener("click", () => {
+                        if (!selectedPiece && pieces_white.includes(cell.innerHTML)) {
+                            selectedPiece = cell.innerHTML;
+                            selectedCell = cell;
+                            cell.classList.add("selected");
+                        } else if (selectedPiece) {
+                            let targetRow = parseInt(cell.dataset.row);
+                            let targetCol = parseInt(cell.dataset.col);
+                            let currentRow = parseInt(selectedCell.dataset.row);
+                            let currentCol = parseInt(selectedCell.dataset.col);
+                            let possible_moves = legal_move_white(selectedPiece, currentRow, currentCol, board);
+                            if (possible_moves.some(move => move[0] == targetRow && move[1] == targetCol)) {
+                                board[currentRow][currentCol] = "";
+                                let temp = board[targetRow][targetCol];
+                                board[targetRow][targetCol] = selectedPiece;
+
+                                // Handle Castling
+                                if (selectedPiece == pieces["K"] && targetRow == 7 && targetCol == 6 && currentRow == 7 && currentCol == 4) {
+                                    board[7][5] = pieces["R"];
+                                    board[7][7] = "";
+                                }
+                                if (selectedPiece == pieces["K"] && targetRow == 7 && targetCol == 2 && currentRow == 7 && currentCol == 4) {
+                                    board[7][3] = pieces["R"];
+                                    board[7][0] = "";
+                                }
+                                // Handle Pawn Promotion
+                                if (selectedPiece == pieces["P"] && targetRow == 0) {
+                                    let choice = prompt("Please select a piece to transform into (Q, R, B, N):");
+                                    board[0][targetCol] = pieces[choice];
+                                }
+                                // Validate King's Safety
+                                if (isWhiteKingChecked(board)) {
+                                    board[currentRow][currentCol] = selectedPiece;
+                                    board[targetRow][targetCol] = temp;
+                                    if (selectedPiece == pieces["K"] && targetRow == 7 && targetCol == 6 && currentRow == 7 && currentCol == 4) {
+                                        board[7][7] = pieces["R"];
+                                        board[7][5] = "";
+                                    }
+                                    if (selectedPiece == pieces["K"] && targetRow == 7 && targetCol == 2 && currentRow == 7 && currentCol == 4) {
+                                        board[7][0] = pieces["R"];
+                                        board[7][3] = "";
+                                    }
+                                    return;
+                                }
+                                if (selectedPiece == pieces["K"]) {
+                                    white_castling = false;
+                                }
+                                renderBoard();
+
+                                let sorted_moves = sortBlackMoves(board);
+
+                                if (sorted_moves.length == 0) {
+                                    let newElement = document.createElement("div");
+                                    newElement.innerText = "Checkmate: White Wins";
+                                    document.body.appendChild(newElement);
+                                    return;
+                                }
+
+                                let population = 40;
+                                let evaluation_overall = 1000; // Initialize evaluation_overall to a large value
+                                let i_best = 0;
+                                let maxMoves = Math.min(sorted_moves.length, population);
+
+                                for (let i = 0; i < maxMoves; i++) {
+                                    let moves_black_1st = sorted_moves[i];
+                                    let board_b_1st = JSON.parse(JSON.stringify(moves_black_1st[5]));
+
+                                    let sorted_moves_white_1st = sortWhiteMoves(board_b_1st);
+                                    let maxMovesWhite1st = 1; //Math.min(sorted_moves_white_1st.length, population);
+
+                                    for (let j = 0; j < maxMovesWhite1st; j++) {
+                                        let moves_white_1st = sorted_moves_white_1st[j];
+                                        let board_w_1st = JSON.parse(JSON.stringify(moves_white_1st[5]));
+
+                                        let evaluation_white_1st = evaluateBoard(board_w_1st);
+
+                                        // Evaluate black's response to white's best move
+                                        let sorted_moves_black_2nd = sortBlackMoves(board_w_1st);
+                                        let maxMovesBlack2nd = 1; //Math.min(sorted_moves_black_2nd.length, population);
+
+                                        for (let k = 0; k < maxMovesBlack2nd; k++) {
+                                            let moves_black_2nd = sorted_moves_black_2nd[k];
+                                            let board_b_2nd = JSON.parse(JSON.stringify(moves_black_2nd[5]));
+
+                                            let evaluation_black_2nd = evaluateBoard(board_b_2nd);
+
+                                            // Evaluate white's response to black's second move
+                                            let sorted_moves_white_2nd = sortWhiteMoves(board_b_2nd);
+                                            let maxMovesWhite2nd = 1; //Math.min(sorted_moves_white_2nd.length, population);
+
+                                            for (let l = 0; l < maxMovesWhite2nd; l++) {
+                                                let moves_white_2nd = sorted_moves_white_2nd[l];
+                                                let board_w_2nd = JSON.parse(JSON.stringify(moves_white_2nd[5]));
+
+                                                let evaluation_white_2nd = evaluateBoard(board_w_2nd);
+
+                                                // Combine evaluations to decide on the best initial black move
+                                                let combined_evaluation = evaluation_white_2nd;
+                                                //let combined_evaluation = evaluation_white_1st + evaluation_black_2nd + evaluation_white_2nd;
+
+                                                if (combined_evaluation < evaluation_overall) {
+                                                    evaluation_overall = combined_evaluation;
+                                                    i_best = i;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Now `i_best` holds the index of the best initial black move considering white's responses
+                                let best_move = sorted_moves[i_best];
+                                let piece_black = best_move[2];
+                                let currRow = best_move[0];
+                                let currCol = best_move[1];
+                                board[currRow][currCol] = "";
+                                board[best_move[3]][best_move[4]] = piece_black;
+                                if (piece_black == pieces["k"]) {
+                                    black_castling = false;
+                                }
+                                renderBoard();
+
+                                let evaluation = evaluateBoard(board);
+                                document.getElementById("evaluationDisplay").innerHTML = "Evaluation at this step: " + evaluation;
+
+                            }
+                            selectedCell.classList.remove("selected");
+                            selectedPiece = null;
+                            selectedCell = null;
+                        }
+                    });
+                }
+            }
+
+            function sortBlackMoves(board_current) {
+                let possible_moves = [];
+                let evaluation = 0;
+                for (let row = 0; row < 8; row++) {
+                    for (let col = 0; col < 8; col++) {
+                        if (pieces_black.includes(board_current[row][col])) {
+                            let piece_black = board_current[row][col];
+                            let response_moves = legal_move_black(piece_black, row, col, board_current);
+                            if (response_moves.length > 0) {
+                                for (let move of response_moves) {
+                                    let local_board = JSON.parse(JSON.stringify(board_current)); // Clone the board
+                                    local_board[move[0]][move[1]] = piece_black;
+                                    local_board[row][col] = "";
+                                    evaluation = evaluateBoard(local_board);
+                                    if (!isBlackKingChecked(local_board)) {
+                                        possible_moves.push([row, col, piece_black, move[0], move[1], local_board, evaluation]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Sort pairs based on evaluations in ascending order
+                let sorted_moves = possible_moves.sort((a, b) => a[6] - b[6]);
+                return sorted_moves;
+            }
+
+            function sortWhiteMoves(board_current) {
+                let possible_moves = [];
+                let evaluation = 0;
+                for (let row = 0; row < 8; row++) {
+                    for (let col = 0; col < 8; col++) {
+                        if (pieces_white.includes(board_current[row][col])) {
+                            let piece_white = board_current[row][col];
+                            let response_moves = legal_move_white(piece_white, row, col, board_current);
+                            if (response_moves.length > 0) {
+                                for (let move of response_moves) {
+                                    let local_board = JSON.parse(JSON.stringify(board_current)); // Clone the board
+                                    local_board[move[0]][move[1]] = piece_white;
+                                    local_board[row][col] = "";
+                                    evaluation = evaluateBoard(local_board);
+                                    if (!isWhiteKingChecked(local_board)) {
+                                        possible_moves.push([row, col, piece_white, move[0], move[1], local_board, evaluation]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Sort pairs based on evaluations in descending order
+                let sorted_moves = possible_moves.sort((a, b) => b[6] - a[6]);
+                return sorted_moves;
+            }
+
+            function evaluateBoard(board) {
+                const pieceValues = {
+                    "\u2656": 5, "\u2658": 3, "\u2657": 3, "\u2655": 9, "\u2654": 0, "\u2659": 1, "": 0,
+                    "\u265C": -5, "\u265E": -3, "\u265D": -3, "\u265B": -9, "\u265A": 0, "\u265F": -1
+                    //"P": 1, "N": 3, "B": 3, "R": 5, "Q": 9, "K": 0,
+                    //"p": -1, "n": -3, "b": -3, "r": -5, "q": -9, "k": 0,
+                };
+
+                let evaluation = 0;
+
+                for (let row = 0; row < 8; row++) {
+                    for (let col = 0; col < 8; col++) {
+                        const piece = board[row][col];
+                        if (piece) {
+                            evaluation += pieceValues[piece];
+                        }
+                    }
+                }
+
+                let control_white = control_board_white(board)
+                let control_black = control_board_black(board)
+                evaluation += (control_white - control_black) / 100.0
+
+                return evaluation;
+            }
+
+            function isWhiteKingChecked(board)
+            {
+                let rowKing = 0, colKing = 0;
+                for (let row = 0; row < 8; row++) {
+                    for (let col = 0; col <  8; col++) {
+                        if (board[row][col] == pieces["K"]) {
+                            rowKing = row;
+                            colKing = col;
+                        }
+                    }
+                }
+
+                // Check downwards
+                for (let row = rowKing - 1; row >= 0; row--) {
+                    if (pieces_white.includes(board[row][colKing]) || board[row][colKing] == pieces["p"] || board[row][colKing] == pieces["b"] || board[row][colKing] == pieces["n"]) {
+                        break;
+                    } else if (board[row][colKing] == pieces["q"] || board[row][colKing] == pieces["r"]) {
+                        return true;
+                    }
+                }
+                // Check upwards
+                for (let row = rowKing + 1; row < 8; row++) {
+                    if (pieces_white.includes(board[row][colKing]) || board[row][colKing] == pieces["p"] || board[row][colKing] == pieces["b"] || board[row][colKing] == pieces["n"]) {
+                        break;
+                    } else if (board[row][colKing] == pieces["q"] || board[row][colKing] == pieces["r"]) {
+                        return true;
+                    }
+                }
+                // Check leftwards
+                for (let col = colKing - 1; col >= 0; col--) {
+                    if (pieces_white.includes(board[rowKing][col]) || board[rowKing][col] == pieces["p"] || board[rowKing][col] == pieces["b"] || board[rowKing][col] == pieces["n"]) {
+                        break;
+                    } else if (board[rowKing][col] == pieces["q"] || board[rowKing][col] == pieces["r"]) {
+                        return true;
+                    }
+                }
+                // Check rightwards
+                for (let col = colKing + 1; col < 8; col++) {
+                    if (pieces_white.includes(board[rowKing][col]) || board[rowKing][col] == pieces["p"] || board[rowKing][col] == pieces["b"] || board[rowKing][col] == pieces["n"]) {
+                        break;
+                    } else if (board[rowKing][col] == pieces["q"] || board[rowKing][col] == pieces["r"]) {
+                        return true;
+                    }
+                }
+
+                // Check top-left diagonal
+                for (let i = rowKing - 1, j = colKing - 1; i >= 0 && j >= 0; i--, j--) {
+                    if (pieces_white.includes(board[i][j]) || board[i][j] == pieces["p"] || board[i][j] == pieces["r"] || board[i][j] == pieces["n"]) {
+                        break;
+                    } else if (board[i][j] == pieces["q"] || board[i][j] == pieces["b"]) {
+                        return true;
+                    }
+                }
+                // Check top-right diagonal
+                for (let i = rowKing - 1, j = colKing + 1; i >= 0 && j < 8; i--, j++) {
+                    if (pieces_white.includes(board[i][j]) || board[i][j] == pieces["p"] || board[i][j] == pieces["r"] || board[i][j] == pieces["n"]) {
+                        break;
+                    } else if (board[i][j] == pieces["q"] || board[i][j] == pieces["b"]) {
+                        return true;
+                    }
+                }
+                // Check bottom-left diagonal
+                for (let i = rowKing + 1, j = colKing - 1; i < 8 && j >= 0; i++, j--) {
+                    if (pieces_white.includes(board[i][j]) || board[i][j] == pieces["p"] || board[i][j] == pieces["r"] || board[i][j] == pieces["n"]) {
+                        break;
+                    } else if (board[i][j] == pieces["q"] || board[i][j] == pieces["b"]) {
+                        return true;
+                    }
+                }
+                // Check bottom-right diagonal
+                for (let i = rowKing + 1, j = colKing + 1; i < 8 && j < 8; i++, j++) {
+                    if (pieces_white.includes(board[i][j]) || board[i][j] == pieces["p"] || board[i][j] == pieces["r"] || board[i][j] == pieces["n"]) {
+                        break;
+                    } else if (board[i][j] == pieces["q"] || board[i][j] == pieces["b"]) {
+                        return true;
+                    }
+                }
+                // Check Pawns
+                const pawnChecks = [ [rowKing - 1, colKing - 1], [rowKing - 1, colKing + 1] ];
+
+                for (let move of pawnChecks) {
+                    const [r, c] = move;
+                    if (r >= 0 && r < 8 && c >= 0 && c < 8 && board[r][c] == pieces["p"] )
+                    {
+                        return true;
+                    }
+                }
+                // Check Knights
+                const knightChecks = [ [rowKing - 2, colKing - 1], [rowKing - 2, colKing + 1], [rowKing - 1, colKing - 2], [rowKing - 1, colKing + 2],
+                                       [rowKing + 1, colKing - 2], [rowKing + 1, colKing + 2], [rowKing + 2, colKing - 1], [rowKing + 2, colKing + 1] ];
+
+                for (let move of knightChecks) {
+                    const [r, c] = move;
+                    if (r >= 0 && r < 8 && c >= 0 && c < 8 && board[r][c] == pieces["n"] )
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            function isBlackKingChecked(board)
+            {
+                let rowKing = 0, colKing = 0;
+                for (let row = 0; row < 8; row++) {
+                    for (let col = 0; col < 8; col++) {
+                        if (board[row][col] == pieces["k"]) {
+                            rowKing = row;
+                            colKing = col;
+                        }
+                    }
+                }
+
+                // Check downwards
+                for (let row = rowKing - 1; row >= 0; row--) {
+                    if (pieces_black.includes(board[row][colKing]) || board[row][colKing] == pieces["P"] || board[row][colKing] == pieces["B"] || board[row][colKing] == pieces["N"]) {
+                        break;
+                    } else if (board[row][colKing] == pieces["Q"] || board[row][colKing] == pieces["R"]) {
+                        return true;
+                    }
+                }
+                // Check upwards
+                for (let row = rowKing + 1; row < 8; row++) {
+                    if (pieces_black.includes(board[row][colKing]) || board[row][colKing] == pieces["P"] || board[row][colKing] == pieces["B"] || board[row][colKing] == pieces["N"]) {
+                        break;
+                    } else if (board[row][colKing] == pieces["Q"] || board[row][colKing] == pieces["R"]) {
+                        return true;
+                    }
+                }
+                // Check leftwards
+                for (let col = colKing - 1; col >= 0; col--) {
+                    if (pieces_black.includes(board[rowKing][col]) || board[rowKing][col] == pieces["P"] || board[rowKing][col] == pieces["B"] || board[rowKing][col] == pieces["N"]) {
+                        break;
+                    } else if (board[rowKing][col] == pieces["Q"] || board[rowKing][col] == pieces["R"]) {
+                        return true;
+                    }
+                }
+                // Check rightwards
+                for (let col = colKing + 1; col < 8; col++) {
+                    if (pieces_black.includes(board[rowKing][col]) || board[rowKing][col] == pieces["P"] || board[rowKing][col] == pieces["B"] || board[rowKing][col] == pieces["N"]) {
+                        break;
+                    } else if (board[rowKing][col] == pieces["Q"] || board[rowKing][col] == pieces["R"]) {
+                        return true;
+                    }
+                }
+
+                // Check top-left diagonal
+                for (let i = rowKing - 1, j = colKing - 1; i >= 0 && j >= 0; i--, j--) {
+                    if (pieces_black.includes(board[i][j]) || board[i][j] == pieces["P"] || board[i][j] == pieces["R"] || board[i][j] == pieces["N"]) {
+                        break;
+                    } else if (board[i][j] == pieces["Q"] || board[i][j] == pieces["B"]) {
+                        return true;
+                    }
+                }
+                // Check top-right diagonal
+                for (let i = rowKing - 1, j = colKing + 1; i >= 0 && j < 8; i--, j++) {
+                    if (pieces_black.includes(board[i][j]) || board[i][j] == pieces["P"] || board[i][j] == pieces["R"] || board[i][j] == pieces["N"]) {
+                        break;
+                    } else if (board[i][j] == pieces["Q"] || board[i][j] == pieces["B"]) {
+                        return true;
+                    }
+                }
+                // Check bottom-left diagonal
+                for (let i = rowKing + 1, j = colKing - 1; i < 8 && j >= 0; i++, j--) {
+                    if (pieces_black.includes(board[i][j]) || board[i][j] == pieces["P"] || board[i][j] == pieces["R"] || board[i][j] == pieces["N"]) {
+                        break;
+                    } else if (board[i][j] == pieces["Q"] || board[i][j] == pieces["B"]) {
+                        return true;
+                    }
+                }
+                // Check bottom-right diagonal
+                for (let i = rowKing + 1, j = colKing + 1; i < 8 && j < 8; i++, j++) {
+                    if (pieces_black.includes(board[i][j]) || board[i][j] == pieces["P"] || board[i][j] == pieces["R"] || board[i][j] == pieces["N"]) {
+                        break;
+                    } else if (board[i][j] == pieces["Q"] || board[i][j] == pieces["B"]) {
+                        return true;
+                    }
+                }
+                // Check Pawns
+                const pawnChecks = [ [rowKing + 1, colKing - 1], [rowKing + 1, colKing + 1] ];
+
+                for (let move of pawnChecks) {
+                    const [r, c] = move;
+                    if (r >= 0 && r < 8 && c >= 0 && c < 8 && board[r][c] == pieces["P"] )
+                    {
+                        return true;
+                    }
+                }
+                // Check Knights
+                const knightChecks = [ [rowKing - 2, colKing - 1], [rowKing - 2, colKing + 1], [rowKing - 1, colKing - 2], [rowKing - 1, colKing + 2],
+                                     [rowKing + 1, colKing - 2], [rowKing + 1, colKing + 2], [rowKing + 2, colKing - 1], [rowKing + 2, colKing + 1] ];
+
+                for (let move of knightChecks) {
+                    const [r, c] = move;
+                    if (r >= 0 && r < 8 && c >= 0 && c < 8 && board[r][c] == pieces["N"] )
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            function legal_move_white(piece, rowPiece, colPiece, board) {
+                let possible_moves = [];
+
+                if (piece == pieces["R"] || piece == pieces["Q"]) {
+                    // Check upwards
+                    for (let row = rowPiece - 1; row >= 0; row--) {
+                        if (pieces_white.includes(board[row][colPiece])) break;
+                        possible_moves.push([row, colPiece]);
+                        if (board[row][colPiece] != "") break;
+                    }
+                    // Check downwards
+                    for (let row = rowPiece + 1; row < 8; row++) {
+                        if (pieces_white.includes(board[row][colPiece])) break;
+                        possible_moves.push([row, colPiece]);
+                        if (board[row][colPiece] != "") break;
+                    }
+                    // Check leftwards
+                    for (let col = colPiece - 1; col >= 0; col--) {
+                        if (pieces_white.includes(board[rowPiece][col])) break;
+                        possible_moves.push([rowPiece, col]);
+                        if (board[rowPiece][col] != "") break;
+                    }
+                    // Check rightwards
+                    for (let col = colPiece + 1; col < 8; col++) {
+                        if (pieces_white.includes(board[rowPiece][col])) break;
+                        possible_moves.push([rowPiece, col]);
+                        if (board[rowPiece][col] != "") break;
+                    }
+                }
+                if (piece == pieces["B"] || piece == pieces["Q"]) {
+                    // Check top-left diagonal
+                    for (let i = rowPiece - 1, j = colPiece - 1; i >= 0 && j >= 0; i--, j--) {
+                        if (pieces_white.includes(board[i][j])) break;
+                        possible_moves.push([i, j]);
+                        if (board[i][j] != "") break;
+                    }
+                    // Check top-right diagonal
+                    for (let i = rowPiece - 1, j = colPiece + 1; i >= 0 && j < 8; i--, j++) {
+                        if (pieces_white.includes(board[i][j])) break;
+                        possible_moves.push([i, j]);
+                        if (board[i][j] != "") break;
+                    }
+                    // Check bottom-left diagonal
+                    for (let i = rowPiece + 1, j = colPiece - 1; i < 8 && j >= 0; i++, j--) {
+                        if (pieces_white.includes(board[i][j])) break;
+                        possible_moves.push([i, j]);
+                        if (board[i][j] != "") break;
+                    }
+                    // Check bottom-right diagonal
+                    for (let i = rowPiece + 1, j = colPiece + 1; i < 8 && j < 8; i++, j++) {
+                        if (pieces_white.includes(board[i][j])) break;
+                        possible_moves.push([i, j]);
+                        if (board[i][j] != "") break;
+                    }
+                }
+                if (piece == pieces["N"]) {
+                    const knightMoves = [ [rowPiece - 2, colPiece - 1], [rowPiece - 2, colPiece + 1], [rowPiece - 1, colPiece - 2], [rowPiece - 1, colPiece + 2],
+                                          [rowPiece + 1, colPiece - 2], [rowPiece + 1, colPiece + 2], [rowPiece + 2, colPiece - 1], [rowPiece + 2, colPiece + 1] ];
+
+                    for (let move of knightMoves) {
+                        const [r, c] = move;
+                        if (r >= 0 && r < 8 && c >= 0 && c < 8 && !pieces_white.includes(board[r][c]))
+                        {
+                            possible_moves.push([r, c]);
+                        }
+                    }
+                }
+                if (piece == pieces["K"]) {
+                    const kingMoves = [ [rowPiece - 1, colPiece - 1], [rowPiece - 1, colPiece + 0], [rowPiece - 1, colPiece + 1], [rowPiece + 0, colPiece - 1],
+                                        [rowPiece + 0, colPiece + 1], [rowPiece + 1, colPiece - 1], [rowPiece + 1, colPiece + 0], [rowPiece + 1, colPiece + 1] ];
+
+
+                    for (let move of kingMoves) {
+                        const [r, c] = move;
+                        const oppKingMoves = [ [r - 1, c - 1], [r - 1, c + 0], [r - 1, c + 1], [r + 0, c - 1],
+                                               [r + 0, c + 1], [r + 1, c - 1], [r + 1, c + 0], [r + 1, c + 1] ];
+                        let isSafe = true;
+                        for (let move2 of oppKingMoves) {
+                            const [r1, c1] = move2;
+                            if (r1 >= 0 && r1 < 8 && c1 >= 0 && c1 < 8) {
+                                if (board[r1][c1] == pieces["k"]) {
+                                    isSafe = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if (isSafe && r >= 0 && r < 8 && c >= 0 && c < 8 && !pieces_white.includes(board[r][c]))
+                        {
+                            possible_moves.push([r, c]);
+                        }
+                    }
+                    if (white_castling == true && !isWhiteKingChecked(board) && board[7][5] == "" && board[7][6] == "" && board[7][7] == pieces["R"]) {
+                        possible_moves.push([7, 6]);
+                    }
+                    if (white_castling == true && !isWhiteKingChecked(board) && board[7][1] == "" && board[7][2] == "" && board[7][3] == "" && board[7][0] == pieces["R"]) {
+                        possible_moves.push([7, 2]);
+                    }
+
+                }
+                if (piece == pieces["P"]) {
+                    if (rowPiece > 0) {
+                        // Move forward
+                        if (board[rowPiece - 1][colPiece] == "") {
+                            possible_moves.push([rowPiece - 1, colPiece]);
+                            // Move two squares forward if it's the pawn's first move
+                            if (rowPiece == 6 && board[rowPiece - 2][colPiece] == "") {
+                                possible_moves.push([rowPiece - 2, colPiece]);
+                            }
+                        }
+                        // Capture diagonally
+                        if (colPiece > 0 && pieces_black.includes(board[rowPiece - 1][colPiece - 1])) {
+                            possible_moves.push([rowPiece - 1, colPiece - 1]);
+                        }
+                        if (colPiece < 7 && pieces_black.includes(board[rowPiece - 1][colPiece + 1])) {
+                            possible_moves.push([rowPiece - 1, colPiece + 1]);
+                        }
+                    }
+                }
+                return possible_moves;
+            }
+
+            function legal_move_black(piece, rowPiece, colPiece, board) {
+                let possible_moves = [];
+
+                if (piece == pieces["k"]) {
+                    if (black_castling == true && !isBlackKingChecked(board) && board[0][5] == "" && board[0][6] == "" && board[0][7] == pieces["r"]) {
+                        possible_moves.push([0, 6]);
+                    }
+                    if (black_castling == true && !isBlackKingChecked(board) && board[0][1] == "" && board[0][2] == "" && board[0][3] == "" && board[0][0] == pieces["r"]) {
+                        possible_moves.push([0, 2]);
+                    }
+                }
+
+                if (piece == pieces["n"]) {
+                    const knightMoves = [ [rowPiece - 2, colPiece - 1], [rowPiece - 2, colPiece + 1], [rowPiece - 1, colPiece - 2], [rowPiece - 1, colPiece + 2],
+                                          [rowPiece + 1, colPiece - 2], [rowPiece + 1, colPiece + 2], [rowPiece + 2, colPiece - 1], [rowPiece + 2, colPiece + 1] ];
+
+                    for (let move of knightMoves) {
+                        const [r, c] = move;
+                        if (r >= 0 && r < 8 && c >= 0 && c < 8 && !pieces_black.includes(board[r][c]))
+                        {
+                            possible_moves.push([r, c]);
+                        }
+                    }
+                }
+                if (piece == pieces["p"]) {
+                    if (rowPiece < 7) {
+                        // Move backward
+                        if (board[rowPiece + 1][colPiece] == "") {
+                            possible_moves.push([rowPiece + 1, colPiece]);
+                            // Move two squares backward if it's the pawn's first move
+                            if (rowPiece == 1 && board[rowPiece + 2][colPiece] == "") {
+                                possible_moves.push([rowPiece + 2, colPiece]);
+                            }
+                        }
+                        // Capture diagonally
+                        if (colPiece > 0 && pieces_white.includes(board[rowPiece + 1][colPiece - 1])) {
+                            possible_moves.push([rowPiece + 1, colPiece - 1]);
+                        }
+                        if (colPiece < 7 && pieces_white.includes(board[rowPiece + 1][colPiece + 1])) {
+                            possible_moves.push([rowPiece + 1, colPiece + 1]);
+                        }
+                    }
+                }
+                if (piece == pieces["b"] || piece == pieces["q"]) {
+                    // Check top-left diagonal
+                    for (let i = rowPiece - 1, j = colPiece - 1; i >= 0 && j >= 0; i--, j--) {
+                        if (pieces_black.includes(board[i][j])) break;
+                        possible_moves.push([i, j]);
+                        if (board[i][j] != "") break;
+                    }
+                    // Check top-right diagonal
+                    for (let i = rowPiece - 1, j = colPiece + 1; i >= 0 && j < 8; i--, j++) {
+                        if (pieces_black.includes(board[i][j])) break;
+                        possible_moves.push([i, j]);
+                        if (board[i][j] != "") break;
+                    }
+                    // Check bottom-left diagonal
+                    for (let i = rowPiece + 1, j = colPiece - 1; i < 8 && j >= 0; i++, j--) {
+                        if (pieces_black.includes(board[i][j])) break;
+                        possible_moves.push([i, j]);
+                        if (board[i][j] != "") break;
+                    }
+                    // Check bottom-right diagonal
+                    for (let i = rowPiece + 1, j = colPiece + 1; i < 8 && j < 8; i++, j++) {
+                        if (pieces_black.includes(board[i][j])) break;
+                        possible_moves.push([i, j]);
+                        if (board[i][j] != "") break;
+                    }
+                }
+                if (piece == pieces["r"] || piece == pieces["q"]) {
+                    // Check upwards
+                    for (let row = rowPiece - 1; row >= 0; row--) {
+                        if (pieces_black.includes(board[row][colPiece])) break;
+                        possible_moves.push([row, colPiece]);
+                        if (board[row][colPiece] != "") break;
+                    }
+                    // Check downwards
+                    for (let row = rowPiece + 1; row < 8; row++) {
+                        if (pieces_black.includes(board[row][colPiece])) break;
+                        possible_moves.push([row, colPiece]);
+                        if (board[row][colPiece] != "") break;
+                    }
+                    // Check leftwards
+                    for (let col = colPiece - 1; col >= 0; col--) {
+                        if (pieces_black.includes(board[rowPiece][col])) break;
+                        possible_moves.push([rowPiece, col]);
+                        if (board[rowPiece][col] != "") break;
+                    }
+                    // Check rightwards
+                    for (let col = colPiece + 1; col < 8; col++) {
+                        if (pieces_black.includes(board[rowPiece][col])) break;
+                        possible_moves.push([rowPiece, col]);
+                        if (board[rowPiece][col] != "") break;
+                    }
+                }
+                if (piece == pieces["k"]) {
+                    const kingMoves = [ [rowPiece - 1, colPiece - 1], [rowPiece - 1, colPiece + 0], [rowPiece - 1, colPiece + 1], [rowPiece + 0, colPiece - 1],
+                                        [rowPiece + 0, colPiece + 1], [rowPiece + 1, colPiece - 1], [rowPiece + 1, colPiece + 0], [rowPiece + 1, colPiece + 1] ];
+
+                    for (let move of kingMoves) {
+                        const [r, c] = move;
+                        const oppKingMoves = [ [r - 1, c - 1], [r - 1, c + 0], [r - 1, c + 1], [r + 0, c - 1],
+                                               [r + 0, c + 1], [r + 1, c - 1], [r + 1, c + 0], [r + 1, c + 1] ];
+                        let isSafe = true;
+                        for (let move2 of oppKingMoves) {
+                            const [r1, c1] = move2;
+                            if (r1 >= 0 && r1 < 8 && c1 >= 0 && c1 < 8) {
+                                if (board[r1][c1] == pieces["K"]) {
+                                    isSafe = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if (isSafe && r >= 0 && r < 8 && c >= 0 && c < 8 && !pieces_black.includes(board[r][c]))
+                        {
+                            possible_moves.push([r, c]);
+                        }
+                    }
+                }
+
+                return possible_moves;
+            }
+
+            function control_board_black(board) {
+                let control_black = 0;
+                let cellBlack = [];
+                for (let cell2 of cells) {
+                    if (pieces_black.includes(cell2.innerHTML)) {
+                        cellBlack.push(cell2);
+                    }
+                }
+
+                for (let cellB of cellBlack)
+                {
+                    let piece_black = cellB.innerHTML;
+                    let rowPiece = parseInt(cellB.dataset.row);
+                    let colPiece = parseInt(cellB.dataset.col);
+
+                    if (piece_black == pieces["n"]) {
+                        const knightMoves = [ [rowPiece - 2, colPiece - 1], [rowPiece - 2, colPiece + 1], [rowPiece - 1, colPiece - 2], [rowPiece - 1, colPiece + 2],
+                                              [rowPiece + 1, colPiece - 2], [rowPiece + 1, colPiece + 2], [rowPiece + 2, colPiece - 1], [rowPiece + 2, colPiece + 1] ];
+
+                        for (let move of knightMoves) {
+                            const [r, c] = move;
+                            if (r >= 0 && r < 8 && c >= 0 && c < 8 && !pieces_black.includes(board[r][c]))
+                            {
+                                control_black += 1;
+                            }
+                        }
+                    } else if (piece_black == pieces["b"] || piece_black == pieces["q"]) {
+                        for (let i = rowPiece - 1, j = colPiece - 1; i >= 0 && j >= 0; i--, j--) {
+                            if (pieces_black.includes(board[i][j])) break;
+                            control_black += 1;
+                            if (board[i][j] != "") break;
+                        }
+                        // Check top-right diagonal
+                        for (let i = rowPiece - 1, j = colPiece + 1; i >= 0 && j < 8; i--, j++) {
+                            if (pieces_black.includes(board[i][j])) break;
+                            control_black += 1;
+                            if (board[i][j] != "") break;
+                        }
+                        // Check bottom-left diagonal
+                        for (let i = rowPiece + 1, j = colPiece - 1; i < 8 && j >= 0; i++, j--) {
+                            if (pieces_black.includes(board[i][j])) break;
+                            control_black += 1;
+                            if (board[i][j] != "") break;
+                        }
+                        // Check bottom-right diagonal
+                        for (let i = rowPiece + 1, j = colPiece + 1; i < 8 && j < 8; i++, j++) {
+                            if (pieces_black.includes(board[i][j])) break;
+                            control_black += 1;
+                            if (board[i][j] != "") break;
+                        }
+                    } else if (piece_black == pieces["r"] || piece_black == pieces["q"]) {
+                        // Check upwards
+                        for (let row = rowPiece - 1; row >= 0; row--) {
+                            if (pieces_black.includes(board[row][colPiece])) break;
+                            control_black += 1;
+                            if (board[row][colPiece] != "") break;
+                        }
+                        // Check downwards
+                        for (let row = rowPiece + 1; row < 8; row++) {
+                            if (pieces_black.includes(board[row][colPiece])) break;
+                            control_black += 1;
+                            if (board[row][colPiece] != "") break;
+                        }
+                        // Check leftwards
+                        for (let col = colPiece - 1; col >= 0; col--) {
+                            if (pieces_black.includes(board[rowPiece][col])) break;
+                            control_black += 1;
+                            if (board[rowPiece][col] != "") break;
+                        }
+                        // Check rightwards
+                        for (let col = colPiece + 1; col < 8; col++) {
+                            if (pieces_black.includes(board[rowPiece][col])) break;
+                            control_black += 1;
+                            if (board[rowPiece][col] != "") break;
+                        }
+                    }
+                }
+
+                return control_black;
+            }
+
+            function control_board_white(board) {
+                let control_white = 0;
+                let cellWhite = [];
+                for (let cell2 of cells) {
+                    if (pieces_white.includes(cell2.innerHTML)) {
+                        cellWhite.push(cell2);
+                    }
+                }
+
+                for (let cellW of cellWhite)
+                {
+                    let piece_white = cellW.innerHTML;
+                    let rowPiece = parseInt(cellW.dataset.row);
+                    let colPiece = parseInt(cellW.dataset.col);
+
+                    if (piece_white == pieces["N"]) {
+                        const knightMoves = [ [rowPiece - 2, colPiece - 1], [rowPiece - 2, colPiece + 1], [rowPiece - 1, colPiece - 2], [rowPiece - 1, colPiece + 2],
+                                              [rowPiece + 1, colPiece - 2], [rowPiece + 1, colPiece + 2], [rowPiece + 2, colPiece - 1], [rowPiece + 2, colPiece + 1] ];
+
+                        for (let move of knightMoves) {
+                            const [r, c] = move;
+                            if (r >= 0 && r < 8 && c >= 0 && c < 8 && !pieces_white.includes(board[r][c]))
+                            {
+                                control_white += 1;
+                            }
+                        }
+                    } else if (piece_white == pieces["B"] || piece_white == pieces["Q"]) {
+                        for (let i = rowPiece - 1, j = colPiece - 1; i >= 0 && j >= 0; i--, j--) {
+                            if (pieces_white.includes(board[i][j])) break;
+                            control_white += 1;
+                            if (board[i][j] != "") break;
+                        }
+                        // Check top-right diagonal
+                        for (let i = rowPiece - 1, j = colPiece + 1; i >= 0 && j < 8; i--, j++) {
+                            if (pieces_white.includes(board[i][j])) break;
+                            control_white += 1;
+                            if (board[i][j] != "") break;
+                        }
+                        // Check bottom-left diagonal
+                        for (let i = rowPiece + 1, j = colPiece - 1; i < 8 && j >= 0; i++, j--) {
+                            if (pieces_white.includes(board[i][j])) break;
+                            control_white += 1;
+                            if (board[i][j] != "") break;
+                        }
+                        // Check bottom-right diagonal
+                        for (let i = rowPiece + 1, j = colPiece + 1; i < 8 && j < 8; i++, j++) {
+                            if (pieces_white.includes(board[i][j])) break;
+                            control_white += 1;
+                            if (board[i][j] != "") break;
+                        }
+                    } else if (piece_white == pieces["R"] || piece_white == pieces["Q"]) {
+                        // Check upwards
+                        for (let row = rowPiece - 1; row >= 0; row--) {
+                            if (pieces_white.includes(board[row][colPiece])) break;
+                            control_white += 1;
+                            if (board[row][colPiece] != "") break;
+                        }
+                        // Check downwards
+                        for (let row = rowPiece + 1; row < 8; row++) {
+                            if (pieces_white.includes(board[row][colPiece])) break;
+                            control_white += 1;
+                            if (board[row][colPiece] != "") break;
+                        }
+                        // Check leftwards
+                        for (let col = colPiece - 1; col >= 0; col--) {
+                            if (pieces_white.includes(board[rowPiece][col])) break;
+                            control_white += 1;
+                            if (board[rowPiece][col] != "") break;
+                        }
+                        // Check rightwards
+                        for (let col = colPiece + 1; col < 8; col++) {
+                            if (pieces_white.includes(board[rowPiece][col])) break;
+                            control_white += 1;
+                            if (board[rowPiece][col] != "") break;
+                        }
+                    }
+                }
+
+                return control_white;
+            }
+
+            renderBoard()
+        </script>
+    </body>
+</html>
