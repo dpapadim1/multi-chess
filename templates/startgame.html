@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-    <html lang="en"></html>
+    <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Chess Game</title>
+        <title>Play Game</title>
         <style>
             .selected { background-color: yellow; }
             .cell {
@@ -38,18 +38,30 @@
         <div id="board" class="board"></div>
         <script>
             const boardElement = document.getElementById("board");
-            let newElement = document.createElement("checkmate");
-
-            const pieces = JSON.parse('{{ pieces|tojson }}');
+            const pieces =JSON.parse('{{ pieces | tojson }}');
             const pieces_white = [ pieces["R"], pieces["N"], pieces["B"], pieces["Q"], pieces["K"], pieces["P"] ];
             const pieces_black = [ pieces["r"], pieces["n"], pieces["b"], pieces["q"], pieces["k"], pieces["p"] ];
             let white_castling = true;
-            let board = JSON.parse('{{ board|tojson }}');
-
-            cells = [];
-
+            let black_castling = true;
+            let board = JSON.parse('{{ board | tojson }}');
+            let turn = JSON.parse('{{ turn | tojson }}');
+            const user_id = JSON.parse('{{ session["user_id"] | tojson }}'); // Get the current user ID from the session
+    
+            let cells = [];
             let selectedPiece = null;
             let selectedCell = null;
+
+            renderBoard(board);
+
+            if (turn == 'white' && user_id == game.creator_id) {
+                <form action="/startgame/{{ game_id, user_id | safe }}" method="post">
+                    <button type="submit">Start Game</button>
+                </form>
+            } else if (turn == 'black' && user_id == game.joiner_id) {
+                <form action="/startgame/{{ game_id, user_id | safe }}" method="post">
+                    <button type="submit">Start Game</button>
+                </form>
+            }
 
             function renderBoard(board) {
                 boardElement.innerHTML = '';
@@ -61,21 +73,22 @@
                         cell.dataset.row = row;
                         cell.dataset.col = col;
                         cell.innerHTML = board[row][col];
-
+    
                         // Apply different colors for chessboard pattern
                         if ((row + col) % 2 === 0) {
                             cell.style.backgroundColor = '#f0d9b5'; // light color
                         } else {
                             cell.style.backgroundColor = '#b58863'; // dark color
                         }
-
+    
                         cells.push(cell);
                         boardElement.appendChild(cell);
                     }
-                } addCellEventListeners(board);
+                }
             }
 
-            function addCellEventListeners(board) {
+    
+            function addWhiteCellEventListeners(board) {
                 for (let cell of cells) {
                     cell.addEventListener("click", () => {
                         if (!selectedPiece && pieces_white.includes(cell.innerHTML)) {
@@ -92,7 +105,7 @@
                                 board[currentRow][currentCol] = "";
                                 let temp = board[targetRow][targetCol];
                                 board[targetRow][targetCol] = selectedPiece;
-
+    
                                 // Handle Castling
                                 if (selectedPiece == pieces["K"] && targetRow == 7 && targetCol == 6 && currentRow == 7 && currentCol == 4) {
                                     board[7][5] = pieces["R"];
@@ -125,82 +138,11 @@
                                     white_castling = false;
                                 }
                                 renderBoard(board);
-
-                                let sorted_moves = sortBlackMoves(board);
-
-                                if (sorted_moves.length == 0) {
-                                    let newElement = document.createElement("div");
-                                    newElement.innerText = "Checkmate: White Wins";
-                                    document.body.appendChild(newElement);
-                                    return;
-                                }
-
-                                let population = 40;
-                                let evaluation_overall = 1000; // Initialize evaluation_overall to a large value
-                                let i_best = 0;
-                                let maxMoves = Math.min(sorted_moves.length, population);
-
-                                for (let i = 0; i < maxMoves; i++) {
-                                    let moves_black_1st = sorted_moves[i];
-                                    let board_b_1st = JSON.parse(JSON.stringify(moves_black_1st[5]));
-
-                                    let sorted_moves_white_1st = sortWhiteMoves(board_b_1st);
-                                    let maxMovesWhite1st = 1; //Math.min(sorted_moves_white_1st.length, population);
-
-                                    for (let j = 0; j < maxMovesWhite1st; j++) {
-                                        let moves_white_1st = sorted_moves_white_1st[j];
-                                        let board_w_1st = JSON.parse(JSON.stringify(moves_white_1st[5]));
-
-                                        let evaluation_white_1st = evaluateBoard(board_w_1st);
-
-                                        // Evaluate black's response to white's best move
-                                        let sorted_moves_black_2nd = sortBlackMoves(board_w_1st);
-                                        let maxMovesBlack2nd = 1; //Math.min(sorted_moves_black_2nd.length, population);
-
-                                        for (let k = 0; k < maxMovesBlack2nd; k++) {
-                                            let moves_black_2nd = sorted_moves_black_2nd[k];
-                                            let board_b_2nd = JSON.parse(JSON.stringify(moves_black_2nd[5]));
-
-                                            let evaluation_black_2nd = evaluateBoard(board_b_2nd);
-
-                                            // Evaluate white's response to black's second move
-                                            let sorted_moves_white_2nd = sortWhiteMoves(board_b_2nd);
-                                            let maxMovesWhite2nd = 1; //Math.min(sorted_moves_white_2nd.length, population);
-
-                                            for (let l = 0; l < maxMovesWhite2nd; l++) {
-                                                let moves_white_2nd = sorted_moves_white_2nd[l];
-                                                let board_w_2nd = JSON.parse(JSON.stringify(moves_white_2nd[5]));
-
-                                                let evaluation_white_2nd = evaluateBoard(board_w_2nd);
-
-                                                // Combine evaluations to decide on the best initial black move
-                                                let combined_evaluation = evaluation_white_2nd;
-                                                //let combined_evaluation = evaluation_white_1st + evaluation_black_2nd + evaluation_white_2nd;
-
-                                                if (combined_evaluation < evaluation_overall) {
-                                                    evaluation_overall = combined_evaluation;
-                                                    i_best = i;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Now `i_best` holds the index of the best initial black move considering white's responses
-                                let best_move = sorted_moves[i_best];
-                                let piece_black = best_move[2];
-                                let currRow = best_move[0];
-                                let currCol = best_move[1];
-                                board[currRow][currCol] = "";
-                                board[best_move[3]][best_move[4]] = piece_black;
-                                if (piece_black == pieces["k"]) {
-                                    black_castling = false;
-                                }
-                                renderBoard(board);
-
+                                // turn = 'black'; // Update turn after rendering the board
+                                // saveGameState(board, turn);
+    
                                 let evaluation = evaluateBoard(board);
                                 document.getElementById("evaluationDisplay").innerHTML = "Evaluation at this step: " + evaluation;
-
                             }
                             selectedCell.classList.remove("selected");
                             selectedPiece = null;
@@ -209,7 +151,92 @@
                     });
                 }
             }
-
+    
+            function addBlackCellEventListeners(board) {
+                for (let cell of cells) {
+                    cell.addEventListener("click", () => {
+                        if (!selectedPiece && pieces_black.includes(cell.innerHTML)) {
+                            selectedPiece = cell.innerHTML;
+                            selectedCell = cell;
+                            cell.classList.add("selected");
+                        } else if (selectedPiece) {
+                            let targetRow = parseInt(cell.dataset.row);
+                            let targetCol = parseInt(cell.dataset.col);
+                            let currentRow = parseInt(selectedCell.dataset.row);
+                            let currentCol = parseInt(selectedCell.dataset.col);
+                            let possible_moves = legal_move_black(selectedPiece, currentRow, currentCol, board);
+                            if (possible_moves.some(move => move[0] == targetRow && move[1] == targetCol)) {
+                                board[currentRow][currentCol] = "";
+                                let temp = board[targetRow][targetCol];
+                                board[targetRow][targetCol] = selectedPiece;
+    
+                                // Handle Castling
+                                if (selectedPiece == pieces["k"] && targetRow == 0 && targetCol == 6 && currentRow == 0 && currentCol == 4) {
+                                    board[0][5] = pieces["r"];
+                                    board[0][7] = "";
+                                }
+                                if (selectedPiece == pieces["k"] && targetRow == 0 && targetCol == 2 && currentRow == 0 && currentCol == 4) {
+                                    board[0][3] = pieces["r"];
+                                    board[0][0] = "";
+                                }
+                                // Handle Pawn Promotion
+                                if (selectedPiece == pieces["p"] && targetRow == 7) {
+                                    let choice = prompt("Please select a piece to transform into (q, r, b, n):");
+                                    board[0][targetCol] = pieces[choice];
+                                }
+                                // Validate King's Safety
+                                if (isBlackKingChecked(board)) {
+                                    board[currentRow][currentCol] = selectedPiece;
+                                    board[targetRow][targetCol] = temp;
+                                    if (selectedPiece == pieces["k"] && targetRow == 0 && targetCol == 6 && currentRow == 0 && currentCol == 4) {
+                                        board[0][7] = pieces["r"];
+                                        board[0][5] = "";
+                                    }
+                                    if (selectedPiece == pieces["k"] && targetRow == 0 && targetCol == 2 && currentRow == 0 && currentCol == 4) {
+                                        board[0][0] = pieces["r"];
+                                        board[0][3] = "";
+                                    }
+                                    return;
+                                }
+                                if (selectedPiece == pieces["k"]) {
+                                    black_castling = false;
+                                }
+                                renderBoard(board);
+                                //turn = 'white'; // Update turn after rendering the board
+                                // saveGameState(board, turn);
+    
+                                let evaluation = evaluateBoard(board);
+                                document.getElementById("evaluationDisplay").innerHTML = "Evaluation at this step: " + evaluation;
+                            }
+                            selectedCell.classList.remove("selected");
+                            selectedPiece = null;
+                            selectedCell = null;
+                        }
+                    });
+                }
+            }
+    
+            function saveGameState(board, turn) {
+                fetch('/update_game', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        game_id: game.id,
+                        board: board,
+                        turn: turn
+                    }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Success:', data);
+                })
+                .catch((error) => {
+                    console.error('Error:', error);
+                });
+            }
+    
             function sortBlackMoves(board_current) {
                 let possible_moves = [];
                 let evaluation = 0;
@@ -902,7 +929,7 @@
                 return control_white;
             }
 
-            renderBoard(board)
+            renderBoard(board);
         </script>
     </body>
 </html>

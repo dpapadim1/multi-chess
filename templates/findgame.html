@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Find Game</title>
+</head>
+<body>
+    <h1>Find Game</h1>
+    <ul>
+        {% for game in games %}
+            <li>
+                Game ID: {{ game.id }} - 
+                <a href="/joingame/{{ game.id }}">Join Game</a>
+            </li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
