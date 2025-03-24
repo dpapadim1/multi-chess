@@ -245,21 +245,8 @@ def playgame(game_id):
         if (game["turn"] == 'white' and user_id != game["creator_id"]) or (game["turn"] == 'black' and (game["joiner_id"] is None or user_id != game["joiner_id"])):
             return apology("not your turn", 403)
 
-        if game["move_index"] == 0:
-            turn ='white'
-            board = [
-                [pieces["r"], pieces["n"], pieces["b"], pieces["q"], pieces["k"], pieces["b"], pieces["n"], pieces["r"]],
-                [pieces["p"], pieces["p"], pieces["p"], pieces["p"], pieces["p"], pieces["p"], pieces["p"], pieces["p"]],
-                ["", "", "", "", "", "", "", ""],
-                ["", "", "", "", "", "", "", ""],
-                ["", "", "", "", "", "", "", ""],
-                ["", "", "", "", "", "", "", ""],
-                [pieces["P"], pieces["P"], pieces["P"], pieces["P"], pieces["P"], pieces["P"], pieces["P"], pieces["P"]],
-                [pieces["R"], pieces["N"], pieces["B"], pieces["Q"], pieces["K"], pieces["B"], pieces["N"], pieces["R"]]
-            ]
-        else:
-            board = json.loads(game["board"])
-            turn = game["turn"]
+        board = json.loads(game["board"])
+        turn = game["turn"]
 
         try:
             # Update the turn
@@ -273,18 +260,8 @@ def playgame(game_id):
             return apology("error processing move", 500)
         return redirect(f"/playgame/{game_id}")
     else:
-        board = [
-            [pieces["r"], pieces["n"], pieces["b"], pieces["q"], pieces["k"], pieces["b"], pieces["n"], pieces["r"]],
-            [pieces["p"], pieces["p"], pieces["p"], pieces["p"], pieces["p"], pieces["p"], pieces["p"], pieces["p"]],
-            ["", "", "", "", "", "", "", ""],
-            ["", "", "", "", "", "", "", ""],
-            ["", "", "", "", "", "", "", ""],
-            ["", "", "", "", "", "", "", ""],
-            [pieces["P"], pieces["P"], pieces["P"], pieces["P"], pieces["P"], pieces["P"], pieces["P"], pieces["P"]],
-            [pieces["R"], pieces["N"], pieces["B"], pieces["Q"], pieces["K"], pieces["B"], pieces["N"], pieces["R"]]
-        ]
-        #board = json.loads(game["board"])
-        turn = 'white'
+        board = json.loads(game["board"])
+        turn = game["turn"]
         return render_template("playgame.html", game=game, board=board, turn=turn, pieces=pieces)
 
 @app.route("/update_game", methods=["POST"])
