@@ -271,7 +271,7 @@ def playgame(game_id):
         except Exception as e:
             print(f"Error processing move: {e}")
             return apology("error processing move", 500)
-        return redirect("/playgame/{}".format(game_id))
+        return redirect(f"/playgame/{game_id}")
     else:
         board = [
             [pieces["r"], pieces["n"], pieces["b"], pieces["q"], pieces["k"], pieces["b"], pieces["n"], pieces["r"]],
