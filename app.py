@@ -1,4 +1,5 @@
 import os
+import sys
 from flask import Flask, flash, redirect, render_template, request, session, jsonify
 from flask_session import Session
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -6,6 +7,7 @@ import sqlite3
 from helpers import apology, login_required
 from contextlib import closing
 import json
+from flask_frozen import Freezer
 
 # Configure application
 app = Flask(__name__)
@@ -283,5 +285,22 @@ def update_game():
         print(f"Database error: {e}")
         return jsonify(success=False, error=str(e))
 
+freezer = Freezer(app)
+
+@freezer.register_generator
+def url_generator():
+    yield '/'
+    yield '/login'
+    yield '/logout'
+    yield '/register'
+    yield '/creategame'
+    yield '/findgame'
+    for game in query_db("SELECT id FROM games"):
+        yield 'playgame', {'game_id': game['id']}
+        yield 'joingame', {'game_id': game['id']}
+
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8000, debug=True)
+    if len(sys.argv) > 1 and sys.argv[1] == "build":
+        freezer.freeze()
+    else:
+        app.run(host='0.0.0.0', port=8000, debug=True)
