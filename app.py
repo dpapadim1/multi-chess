@@ -103,7 +103,7 @@ def login():
 
     # User reached route via GET (as by clicking a link or via redirect)
     else:
-        return render_template("login.html")
+        return render_template("/login.html")
 
 @app.route("/logout")
 @app.route("/logout.html")  # Alias for .html
@@ -166,7 +166,7 @@ def register():
 
     # User reached route via GET (as by clicking a link or via redirect)
     else:
-        return render_template("register.html")
+        return render_template("/register.html")
 
 @app.route("/creategame", methods=["GET", "POST"])
 @app.route("/creategame.html", methods=["GET", "POST"])  # Alias for .html
@@ -193,7 +193,7 @@ def creategame():
         game_id = game["id"]
         return redirect("/playgame/{}".format(game_id))
     else:
-        return render_template("creategame.html")
+        return render_template("/creategame.html")
 
 @app.route("/joingame/<int:game_id>", methods=["GET", "POST"])
 @app.route("/joingame/<int:game_id>.html", methods=["GET", "POST"])
