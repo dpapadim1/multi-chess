@@ -75,8 +75,8 @@ def newgame():
         ]
         return render_template("newgame.html", pieces=pieces, board=board)
 
-@app.route("/login", methods=["GET", "POST"])
-@app.route("/login.html", methods=["GET", "POST"])  # Alias for .html
+@app.route("/multi-chess/login", methods=["GET", "POST"])
+@app.route("/multi-chess/login.html", methods=["GET", "POST"])  # Alias for .html
 def login():
     """Log user in"""
     # Forget any user_id
