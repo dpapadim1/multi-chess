@@ -31,6 +31,28 @@
             .cell:nth-child(even):nth-child(odd) {
                 background-color: #f0d9b5; /* light color */
             }
+            @media (max-width: 768px) {
+                .cell {
+                    width: 40px;
+                    height: 40px;
+                    line-height: 40px;
+                    font-size: 30px;
+                }
+                .board {
+                    grid-template-columns: repeat(8, 40px);
+                }
+            }
+            @media (max-width: 480px) {
+                .cell {
+                    width: 30px;
+                    height: 30px;
+                    line-height: 30px;
+                    font-size: 20px;
+                }
+                .board {
+                    grid-template-columns: repeat(8, 30px);
+                }
+            }
         </style>
     </head>
     <body>
@@ -42,7 +64,32 @@
         <p>Turn: {{ game.turn }}</p>
         <div id="evaluationDisplay"></div>
         <div id="board" class="board"></div>
+        <input type="hidden" id="game-id" value="1"> <!-- Hidden input for the game ID -->
+        <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
         <script>
+
+
+
+            const socket = io();
+
+            // Join the game room
+            const gameId = "{{ game['id'] }}";
+            socket.emit('join_game', { game_id: gameId });
+
+            // Listen for game updates
+            socket.on('update_game', function(data) {
+                if (data.game_id === gameId) {
+                    // Update the board and turn dynamically
+                    console.log('Game updated:', data);
+                    // Add logic to update the board on the page
+                }
+            });
+
+            // Handle move submission
+            function makeMove(gameId, board, turn) {
+                socket.emit('make_move', { game_id: gameId, board: board, turn: turn });
+            }
+
             const boardElement = document.getElementById("board");
             const pieces =JSON.parse('{{ pieces | tojson }}');
             const pieces_white = [ pieces["R"], pieces["N"], pieces["B"], pieces["Q"], pieces["K"], pieces["P"] ];
@@ -57,8 +104,55 @@
             let selectedPiece = null;
             let selectedCell = null;
 
+            document.addEventListener("DOMContentLoaded", () => {
+                let selectedSquare = null;
+
+                // Add click event listeners to all squares
+                document.querySelectorAll(".chess-square").forEach(square => {
+                    square.addEventListener("click", () => {
+                        const position = square.dataset.position; // e.g., "6,4"
+
+                        if (!selectedSquare) {
+                            // First click: Select the piece to move
+                            selectedSquare = position;
+                            square.classList.add("selected"); // Highlight the selected square
+                        } else {
+                            // Second click: Move the piece
+                            const fromPosition = selectedSquare;
+                            const toPosition = position;
+
+                            // Send the move to the server
+                            const gameId = document.getElementById("game-id").value; // Hidden input with game ID
+                            fetch(`/playgame/${gameId}`, {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/x-www-form-urlencoded",
+                                },
+                                body: new URLSearchParams({
+                                    from: fromPosition,
+                                    to: toPosition,
+                                }),
+                            })
+                                .then(response => {
+                                    if (response.ok) {
+                                        console.log("Move successful!");
+                                        window.location.reload(); // Reload the page to reflect the updated board
+                                    } else {
+                                        response.text().then(text => alert("Error: " + text));
+                                    }
+                                })
+                                .catch(error => console.error("Request failed:", error));
+
+                            // Reset selection
+                            document.querySelectorAll(".chess-square").forEach(sq => sq.classList.remove("selected"));
+                            selectedSquare = null;
+                        }
+                    });
+                });
+            });
+
             function renderBoard(board) {
-                boardElement.innerHTML = '';
+                boardElement.innerHTML = ''; // Clear the board
                 cells = [];
                 for (let row = 0; row < 8; row++) {
                     for (let col = 0; col < 8; col++) {
@@ -66,7 +160,7 @@
                         cell.classList.add("cell");
                         cell.dataset.row = row;
                         cell.dataset.col = col;
-                        cell.innerHTML = board[row][col];
+                        cell.innerHTML = board[row][col] || ''; // Render piece or empty cell
     
                         // Apply different colors for chessboard pattern
                         if ((row + col) % 2 === 0) {
@@ -79,12 +173,11 @@
                         boardElement.appendChild(cell);
                     }
                 }
-                if (turn == 'white' && user_id == game.creator_id) {
+                // Reattach event listeners based on the current turn and user
+                if (turn === 'white' && user_id === game.creator_id) {
                     addWhiteCellEventListeners(board);
-                    turn = 'black';
-                } else if (turn == 'black' && user_id == game.joiner_id) {
+                } else if (turn === 'black' && user_id === game.joiner_id) {
                     addBlackCellEventListeners(board);
-                    turn = 'white';
                 }
             }
     
@@ -101,7 +194,7 @@
                             let currentRow = parseInt(selectedCell.dataset.row);
                             let currentCol = parseInt(selectedCell.dataset.col);
                             let possible_moves = legal_move_white(selectedPiece, currentRow, currentCol, board);
-                            if (possible_moves.some(move => move[0] == targetRow && move[1] == targetCol)) {
+                            if (possible_moves.some(move => move[0] === targetRow && move[1] === targetCol)) {
                                 board[currentRow][currentCol] = "";
                                 let temp = board[targetRow][targetCol];
                                 board[targetRow][targetCol] = selectedPiece;
@@ -137,12 +230,9 @@
                                 if (selectedPiece == pieces["K"]) {
                                     white_castling = false;
                                 }
-                                renderBoard(board);
-                                // turn = 'black'; // Update turn after rendering the board
-                                // saveGameState(board, turn);
-    
-                                let evaluation = evaluateBoard(board);
-                                document.getElementById("evaluationDisplay").innerHTML = "Evaluation at this step: " + evaluation;
+                                turn = 'black'; // Update turn
+                                makeMove(gameId, board, turn); // Notify server of the move
+                                renderBoard(board); // Re-render the board
                             }
                             selectedCell.classList.remove("selected");
                             selectedPiece = null;
@@ -165,7 +255,7 @@
                             let currentRow = parseInt(selectedCell.dataset.row);
                             let currentCol = parseInt(selectedCell.dataset.col);
                             let possible_moves = legal_move_black(selectedPiece, currentRow, currentCol, board);
-                            if (possible_moves.some(move => move[0] == targetRow && move[1] == targetCol)) {
+                            if (possible_moves.some(move => move[0] === targetRow && move[1] === targetCol)) {
                                 board[currentRow][currentCol] = "";
                                 let temp = board[targetRow][targetCol];
                                 board[targetRow][targetCol] = selectedPiece;
@@ -201,12 +291,9 @@
                                 if (selectedPiece == pieces["k"]) {
                                     black_castling = false;
                                 }
-                                renderBoard(board);
-                                //turn = 'white'; // Update turn after rendering the board
-                                // saveGameState(board, turn);
-    
-                                let evaluation = evaluateBoard(board);
-                                document.getElementById("evaluationDisplay").innerHTML = "Evaluation at this step: " + evaluation;
+                                turn = 'white'; // Update turn
+                                makeMove(gameId, board, turn); // Notify server of the move
+                                renderBoard(board); // Re-render the board
                             }
                             selectedCell.classList.remove("selected");
                             selectedPiece = null;

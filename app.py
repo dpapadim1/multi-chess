@@ -8,6 +8,7 @@ from helpers import apology, login_required
 from contextlib import closing
 import json
 from flask_frozen import Freezer
+from flask_socketio import SocketIO, emit, join_room, leave_room
 
 # Configure application
 app = Flask(__name__)
@@ -16,6 +17,9 @@ app = Flask(__name__)
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
+
+# Initialize SocketIO
+socketio = SocketIO(app)
 
 # Database setup
 DATABASE = os.path.join('src', 'database', 'multi_chess.db')
@@ -45,13 +49,13 @@ def query_db(query, args=(), one=False):
         print(f"Database error: {e}")
         return None
 
-@app.route("/", methods=["GET"])
+@app.route("/", methods=["GET"])  # Explicitly allow only GET
 @login_required
 def index():
     """Show portfolio of stocks"""
     return render_template("index.html")
 
-@app.route("/newgame", methods=["GET", "POST"])
+@app.route("/newgame", methods=["GET", "POST"])  # Explicitly allow GET and POST
 @app.route("/newgame.html", methods=["GET", "POST"])  # Alias for .html
 def newgame():
     """Begin Chess Game"""
@@ -75,8 +79,8 @@ def newgame():
         ]
         return render_template("newgame.html", pieces=pieces, board=board)
 
-@app.route("/multi-chess/login", methods=["GET", "POST"])
-@app.route("/multi-chess/login.html", methods=["GET", "POST"])  # Alias for .html
+@app.route("/login", methods=["GET", "POST"])  # Explicitly allow GET and POST
+@app.route("/login.html", methods=["GET", "POST"])  # Alias for .html
 def login():
     """Log user in"""
     # Forget any user_id
@@ -115,7 +119,7 @@ def logout():
     # Redirect user to login form
     return redirect("/")
 
-@app.route("/register", methods=["GET", "POST"])
+@app.route("/register", methods=["GET", "POST"])  # Explicitly allow GET and POST
 @app.route("/register.html", methods=["GET", "POST"])  # Alias for .html
 def register():
     """Register user"""
@@ -167,7 +171,7 @@ def register():
     else:
         return render_template("register.html")
 
-@app.route("/creategame", methods=["GET", "POST"])
+@app.route("/creategame", methods=["GET", "POST"])  # Explicitly allow GET and POST
 @app.route("/creategame.html", methods=["GET", "POST"])  # Alias for .html
 @login_required
 def creategame():
@@ -194,7 +198,7 @@ def creategame():
     else:
         return render_template("creategame.html")  # Corrected to use "creategame.html"
 
-@app.route("/joingame/<int:game_id>", methods=["GET", "POST"])
+@app.route("/joingame/<int:game_id>", methods=["GET", "POST"])  # Explicitly allow GET and POST
 @app.route("/joingame/<int:game_id>.html", methods=["GET", "POST"])  # Alias for .html
 @login_required
 def joingame(game_id):
@@ -224,7 +228,7 @@ def findgame():
     games = query_db("SELECT * FROM games WHERE status = 'waiting'")
     return render_template("findgame.html", games=games)
 
-@app.route("/playgame/<int:game_id>", methods=["GET", "POST"])
+@app.route("/playgame/<int:game_id>", methods=["GET", "POST"])  # Explicitly allow GET and POST
 @app.route("/playgame/<int:game_id>.html", methods=["GET", "POST"])  # Alias for .html
 def playgame(game_id):
     """Play the game"""
@@ -245,6 +249,45 @@ def playgame(game_id):
         board = json.loads(game["board"])
         turn = game["turn"]
 
+        # Extract move data from the request
+        from_pos = request.form.get("from")
+        to_pos = request.form.get("to")
+        if not from_pos or not to_pos:
+            print("Move data missing: from_pos or to_pos is None")
+            return apology("invalid move", 400)
+
+        # Convert positions to board indices
+        try:
+            from_row, from_col = map(int, from_pos.split(","))
+            to_row, to_col = map(int, to_pos.split(","))
+            print(f"Move positions: from ({from_row}, {from_col}) to ({to_row}, {to_col})")
+        except ValueError:
+            print("Invalid move format: from_pos or to_pos could not be parsed")
+            return apology("invalid move format", 400)
+
+        # Validate and process the move
+        piece = board[from_row][from_col]
+        print(f"Piece being moved: {piece}")
+        if not piece or (turn == 'white' and piece.islower()) or (turn == 'black' and piece.isupper()):
+            print("Invalid move: No piece to move or moving opponent's piece")
+            return apology("invalid move", 400)
+
+        # Ensure the move is within bounds and valid
+        if not (0 <= to_row < 8 and 0 <= to_col < 8):
+            print("Move out of bounds")
+            return apology("move out of bounds", 400)
+
+        # Basic move validation (e.g., no moving to a square occupied by the same color)
+        target_piece = board[to_row][to_col]
+        print(f"Target position piece: {target_piece}")
+        if (turn == 'white' and target_piece.isupper()) or (turn == 'black' and target_piece.islower()):
+            print("Invalid move: Cannot capture own piece")
+            return apology("cannot capture own piece", 400)
+
+        # Update the board
+        board[to_row][to_col] = piece
+        board[from_row][from_col] = ""
+
         try:
             # Update the turn
             new_turn = 'black' if game["turn"] == 'white' else 'white'
@@ -252,6 +295,8 @@ def playgame(game_id):
             conn.execute("UPDATE games SET board = ?, turn = ?, move_index = move_index + 1 WHERE id = ?", [json.dumps(board), new_turn, game_id])
             conn.commit()
             conn.close()  # Close the database connection
+
+            socketio.emit('update_game', {'game_id': game_id, 'board': board, 'turn': new_turn}, room=f"game_{game_id}")
         except Exception as e:
             print(f"Error processing move: {e}")
             return apology("error processing move", 500)
@@ -260,6 +305,28 @@ def playgame(game_id):
         board = json.loads(game["board"])
         turn = game["turn"]
         return render_template("playgame.html", game=game, board=board, turn=turn, pieces=pieces)
+
+@socketio.on('join_game')
+def handle_join_game(data):
+    """Handle a player joining a game room"""
+    game_id = data['game_id']
+    join_room(f"game_{game_id}")
+    emit('player_joined', {'message': f"Player joined game {game_id}"}, room=f"game_{game_id}")
+
+@socketio.on('make_move')
+def handle_make_move(data):
+    """Handle a player making a move"""
+    game_id = data['game_id']
+    board = data['board']
+    turn = data['turn']
+    try:
+        conn = get_db()
+        conn.execute("UPDATE games SET board = ?, turn = ?, move_index = move_index + 1 WHERE id = ?", [json.dumps(board), turn, game_id])
+        conn.commit()
+        conn.close()
+        emit('update_game', {'game_id': game_id, 'board': board, 'turn': turn}, room=f"game_{game_id}")
+    except sqlite3.Error as e:
+        emit('error', {'message': str(e)}, room=f"game_{game_id}")
 
 @app.route("/update_game", methods=["POST"])  # Explicitly allow only POST
 @login_required
@@ -303,4 +370,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "build":
         freezer.freeze()
     else:
-        app.run(host='0.0.0.0', port=8000, debug=True)
+        socketio.run(app, host='0.0.0.0', port=8000, debug=True)
