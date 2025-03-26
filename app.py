@@ -103,10 +103,10 @@ def login():
 
     # User reached route via GET (as by clicking a link or via redirect)
     else:
-        return render_template("/login.html")
+        return render_template("login.html")  # Corrected to use "login.html"
 
-@app.route("/logout")
-@app.route("/logout.html")  # Alias for .html
+@app.route("/logout", methods=["GET"])  # Explicitly allow only GET
+@app.route("/logout.html", methods=["GET"])  # Alias for .html
 def logout():
     """Log user out"""
     # Forget any user_id
@@ -122,51 +122,50 @@ def register():
     # Forget any user_id
     session.clear()
 
-    # User reached route via POST (as by submitting a form via POST)
     if request.method == "POST":
-        # Ensure username was submitted
-        if not request.form.get("username"):
+        # Validate form inputs
+        username = request.form.get("username")
+        password = request.form.get("password")
+        confirmation = request.form.get("confirmation")
+
+        if not username:
             return apology("must provide username", 400)
-
-        # Ensure password was submitted
-        elif not request.form.get("password"):
+        elif not password:
             return apology("must provide password", 400)
-
-        # Ensure password confirmation was submitted
-        elif not request.form.get("confirmation"):
+        elif not confirmation:
             return apology("must retype password", 400)
-
-        # Ensure password confirmation is the same with password
-        elif request.form.get("confirmation") != request.form.get("password"):
+        elif password != confirmation:
             return apology("passwords do not match", 400)
 
-        # Query database for username
-        username = request.form.get("username")
+        # Check if username already exists
         rows = query_db("SELECT * FROM users WHERE username = ?", [username])
-
-        # Ensure username is not already taken
-        if len(rows) != 0:
+        if rows:
             return apology("username is already taken", 400)
 
-        hash = generate_password_hash(request.form.get("password"))
-        conn = get_db()
-        conn.execute("INSERT INTO users (username, hash) VALUES(?, ?)", [username, hash])
-        conn.commit()
-        conn.close()  # Close the database connection
+        # Insert new user into the database
+        try:
+            hash = generate_password_hash(password)
+            conn = get_db()
+            conn.execute("INSERT INTO users (username, hash) VALUES(?, ?)", [username, hash])
+            conn.commit()
+            conn.close()
+        except sqlite3.Error as e:
+            print(f"Database error: {e}")
+            return apology("registration failed", 500)
 
-        # Remember which user has logged in
+        # Log the user in
         rows = query_db("SELECT id FROM users WHERE username = ?", [username])
         if rows and len(rows) > 0:
             session["user_id"] = rows[0]["id"]
         else:
             return apology("registration failed", 500)
 
-        # Redirect user to home page
+        # Redirect to the home page
         return redirect("/")
 
-    # User reached route via GET (as by clicking a link or via redirect)
+    # Render the registration page
     else:
-        return render_template("/register.html")
+        return render_template("register.html")
 
 @app.route("/creategame", methods=["GET", "POST"])
 @app.route("/creategame.html", methods=["GET", "POST"])  # Alias for .html
@@ -191,12 +190,12 @@ def creategame():
         conn.close()  # Close the database connection
         game = query_db("SELECT * FROM games WHERE creator_id = ? AND status = 'waiting'", [user_id], one=True)
         game_id = game["id"]
-        return redirect("/playgame/{}".format(game_id))
+        return redirect(f"/playgame/{game_id}.html")  # Ensure .html extension in redirect
     else:
-        return render_template("/creategame.html")
+        return render_template("creategame.html")  # Corrected to use "creategame.html"
 
 @app.route("/joingame/<int:game_id>", methods=["GET", "POST"])
-@app.route("/joingame/<int:game_id>.html", methods=["GET", "POST"])
+@app.route("/joingame/<int:game_id>.html", methods=["GET", "POST"])  # Alias for .html
 @login_required
 def joingame(game_id):
     """Join an existing game"""
@@ -217,7 +216,7 @@ def joingame(game_id):
     else:
         return render_template("joingame.html", game_id=game_id)
 
-@app.route("/findgame", methods=["GET"])
+@app.route("/findgame", methods=["GET"])  # Explicitly allow only GET
 @app.route("/findgame.html", methods=["GET"])  # Alias for .html
 @login_required
 def findgame():
@@ -226,7 +225,7 @@ def findgame():
     return render_template("findgame.html", games=games)
 
 @app.route("/playgame/<int:game_id>", methods=["GET", "POST"])
-@app.route("/playgame/<int:game_id>.html", methods=["GET", "POST"])
+@app.route("/playgame/<int:game_id>.html", methods=["GET", "POST"])  # Alias for .html
 def playgame(game_id):
     """Play the game"""
     game = query_db("SELECT * FROM games WHERE id = ?", [game_id], one=True)
@@ -262,7 +261,7 @@ def playgame(game_id):
         turn = game["turn"]
         return render_template("playgame.html", game=game, board=board, turn=turn, pieces=pieces)
 
-@app.route("/update_game", methods=["POST"])
+@app.route("/update_game", methods=["POST"])  # Explicitly allow only POST
 @login_required
 def update_game():
     """Update the game state"""
